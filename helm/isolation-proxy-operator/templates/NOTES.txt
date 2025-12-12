@@ -1,0 +1,40 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named {{ .Release.Name }}.
+
+The Isolation Proxy Operator has been deployed in namespace {{ .Release.Namespace }}.
+
+To verify the installation:
+
+  kubectl get deployment -n {{ .Release.Namespace }} {{ include "isolation-proxy-operator.fullname" . }}-controller-manager
+
+To create a DedicatedService, use:
+
+  cat <<EOF | kubectl apply -f -
+  apiVersion: soh.re/v1alpha1
+  kind: DedicatedService
+  metadata:
+    name: example-service
+    namespace: default
+  spec:
+    image: your-image:tag
+    port: 8080
+    replicas: 5
+    service:
+      type: ClusterIP
+      port: 9090
+  EOF
+
+To check your resources:
+
+  kubectl get dedi -A
+  kubectl get ipods -A
+
+For more information, visit:
+  https://github.com/jmainguy/isolation-proxy
+
+{{- if .Values.metrics.enabled }}
+
+Metrics are available at:
+  http://{{ include "isolation-proxy-operator.fullname" . }}-controller-manager.{{ .Release.Namespace }}.svc:{{ .Values.metrics.port }}/metrics
+{{- end }}

@@ -1,0 +1,47 @@
+# Example values for deploying the SOH Kubernetes Operator
+# Copy this file and customize for your environment
+
+# Operator image configuration
+image:
+  repository: zot.isolation.io/isolation-proxy
+  pullPolicy: Always
+  tag: "latest"
+
+# If using a private registry, add image pull secrets
+# imagePullSecrets:
+#   - name: my-registry-secret
+
+# Resource limits for the operator
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 64Mi
+
+# Enable leader election for HA deployments
+leaderElection:
+  enabled: false
+
+# For production, you might want:
+# replicaCount: 2
+# leaderElection:
+#   enabled: true
+# resources:
+#   limits:
+#     cpu: 1000m
+#     memory: 512Mi
+#   requests:
+#     cpu: 200m
+#     memory: 128Mi
+
+# Node selector example for dedicated operator nodes
+# nodeSelector:
+#   node-role.kubernetes.io/control-plane: ""
+
+# Tolerations for running on control plane nodes
+# tolerations:
+#   - key: node-role.kubernetes.io/control-plane
+#     operator: Exists
+#     effect: NoSchedule

@@ -1,0 +1,6 @@
+domain: soh.re
+layout:
+- go.kubebuilder.io/v3
+projectName: soh-k8s
+repo: github.com/jmainguy/soh-k8s
+version: "3"

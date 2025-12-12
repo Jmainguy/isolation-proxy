@@ -1,0 +1,15 @@
+apiVersion: v2
+name: isolation-proxy-operator
+description: A Helm chart for Isolation Proxy Operator - TCP proxy with dedicated pod per connection
+type: application
+version: 0.1.0
+appVersion: "latest"
+keywords:
+  - kubernetes
+  - operator
+  - tcp-proxy
+maintainers:
+  - name: jmainguy
+home: https://github.com/Jmainguy/isolation-proxy
+sources:
+  - https://github.com/Jmainguy/isolation-proxy

@@ -1,0 +1,22 @@
+apiVersion: soh.re/v1alpha1
+kind: DedicatedService
+metadata:
+  name: example-service
+  namespace: default
+spec:
+  image: your-app-image:latest
+  port: 8080
+  replicas: 5
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "100m"
+    limits:
+      memory: "128Mi"
+      cpu: "200m"
+  service:
+    type: ClusterIP
+    port: 9090
+  env:
+  - name: LOG_LEVEL
+    value: "info"
