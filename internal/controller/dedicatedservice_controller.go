@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"os"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -501,6 +502,10 @@ func (r *DedicatedServiceReconciler) reconcileProxyDeployment(ctx context.Contex
 	err := r.Get(ctx, types.NamespacedName{Name: deploymentName, Namespace: wss.Namespace}, deployment)
 
 	replicas := int32(1)
+	proxyImage := os.Getenv("PROXY_IMAGE")
+	if proxyImage == "" {
+		proxyImage = "zot.soh.re/jmainguy/isolation-proxy:latest"
+	}
 
 	desiredDeployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -532,8 +537,8 @@ func (r *DedicatedServiceReconciler) reconcileProxyDeployment(ctx context.Contex
 					Containers: []corev1.Container{
 						{
 							Name:            "proxy",
-							Image:           "zot.soh.re/isolation-proxy:latest",
-							ImagePullPolicy: corev1.PullAlways,
+							Image:           proxyImage,
+							ImagePullPolicy: corev1.PullIfNotPresent,
 							Command:         []string{"/manager"},
 							Args: []string{
 								"--proxy-only",

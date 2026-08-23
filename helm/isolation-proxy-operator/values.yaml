@@ -6,8 +6,12 @@ replicaCount: 1
 
 image:
   repository: zot.soh.re/jmainguy/isolation-proxy
-  pullPolicy: Always
-  tag: "latest"
+  pullPolicy: IfNotPresent
+  tag: ""
+
+proxyImage:
+  repository: zot.soh.re/jmainguy/isolation-proxy
+  tag: ""
 
 imagePullSecrets: []
 nameOverride: ""

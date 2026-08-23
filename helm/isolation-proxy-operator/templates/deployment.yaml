@@ -34,6 +34,9 @@ spec:
           {{- toYaml .Values.securityContext | nindent 12 }}
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+        - name: PROXY_IMAGE
+          value: "{{ .Values.proxyImage.repository }}:{{ .Values.proxyImage.tag | default .Chart.AppVersion }}"
         args:
         - --leader-elect={{ .Values.leaderElection.enabled }}
         - --metrics-bind-address=:{{ .Values.metrics.port }}
