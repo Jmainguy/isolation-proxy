@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/Jmainguy/isolation-proxy/compare/v1.1.1...v1.1.2) (2026-08-23)
+
+
+### Bug Fixes
+
+* **proxy:** use released image for managed proxies ([7f62fea](https://github.com/Jmainguy/isolation-proxy/commit/7f62feaee38f278b279820a3f1187b1f9fc3e89a))
+
 ## [1.1.1](https://github.com/Jmainguy/isolation-proxy/compare/v1.1.0...v1.1.1) (2026-08-23)
 
 
