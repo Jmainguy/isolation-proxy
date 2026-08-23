@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/Jmainguy/isolation-proxy/compare/v1.0.0...v1.1.0) (2026-08-23)
+
+
+### Features
+
+* **release:** publish trusted OCI artifacts ([35e25db](https://github.com/Jmainguy/isolation-proxy/commit/35e25dbbe90567a104927b80e8c138139c074aa8))
+
 ## 1.0.0 (2025-12-12)
 
 
