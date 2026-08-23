@@ -1,12 +1,12 @@
 # Version must be provided via environment variable (e.g., from workflow)
 VERSION ?= dev
 # Image base name
-IMG_BASE ?= zot.soh.re/isolation-proxy
+IMG_BASE ?= zot.soh.re/jmainguy/isolation-proxy
 # Image URLs with tags
 IMG_VERSION ?= $(IMG_BASE):$(VERSION)
 IMG_LATEST ?= $(IMG_BASE):latest
 # Helm chart repository
-HELM_REPO ?= oci://zot.soh.re
+HELM_REPO ?= oci://zot.soh.re/jmainguy
 # Helm chart name
 HELM_CHART_NAME ?= isolation-proxy-operator
 # Namespace to deploy the operator

@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - uses: azure/setup-helm@v5
+
+      - name: Lint and render chart
+        run: |
+          helm lint helm/isolation-proxy-operator
+          helm template isolation-proxy-operator helm/isolation-proxy-operator >/dev/null

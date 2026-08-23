@@ -13,3 +13,11 @@ maintainers:
 home: https://github.com/Jmainguy/isolation-proxy
 sources:
   - https://github.com/Jmainguy/isolation-proxy
+annotations:
+  org.opencontainers.image.authors: Jonathan Seth Mainguy <jon@soh.re>
+  org.opencontainers.image.description: Kubernetes operator providing TCP proxying with per-connection pod isolation
+  org.opencontainers.image.licenses: GPL-2.0-only
+  org.opencontainers.image.source: https://github.com/Jmainguy/isolation-proxy
+  org.opencontainers.image.title: Isolation Proxy Operator
+  org.opencontainers.image.url: https://github.com/Jmainguy/isolation-proxy
+  org.opencontainers.image.vendor: Jmainguy

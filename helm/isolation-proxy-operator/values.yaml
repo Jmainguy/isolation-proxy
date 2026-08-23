@@ -5,7 +5,7 @@
 replicaCount: 1
 
 image:
-  repository: zot.soh.re/isolation-proxy
+  repository: zot.soh.re/jmainguy/isolation-proxy
   pullPolicy: Always
   tag: "latest"
 

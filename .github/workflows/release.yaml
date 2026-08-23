@@ -1,9 +1,8 @@
-name: Golang Release
+name: Release
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: write
@@ -17,42 +16,124 @@ jobs:
       release_created: ${{ steps.release-please.outputs.release_created }}
       version: ${{ steps.release-please.outputs.version }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         id: release-please
         with:
           release-type: go
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
 
-  release:
+  publish:
     runs-on: ubuntu-latest
     needs: release-please
-    if: needs.release-please.outputs.release_created
+    if: needs.release-please.outputs.release_created == 'true'
+    env:
+      REGISTRY: zot.soh.re
+      IMAGE_REPOSITORY: jmainguy/isolation-proxy
+      CHART_REPOSITORY: jmainguy
+      CHART_PATH: helm/isolation-proxy-operator
+      VERSION: ${{ needs.release-please.outputs.version }}
     steps:
-      - uses: actions/checkout@v6
+      - name: Check out release
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - run: git fetch --force --tags
-
-      - uses: actions/setup-go@v6
+      - name: Set up Go
+        uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
-          cache: false
+          go-version-file: go.mod
 
-      # Login to OCI registry for both Docker and Helm
-      - name: Login to OCI registry
-        uses: docker/login-action@v3
+      - name: Test
+        run: go test ./...
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Zot
+        uses: docker/login-action@v4
         with:
-          registry: zot.soh.re
+          registry: ${{ env.REGISTRY }}
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # Login Helm to OCI registry
-      - name: Helm registry login
-        run: |
-          echo "${{ secrets.DOCKER_PASSWORD }}" | helm registry login zot.soh.re --username ${{ secrets.DOCKER_USERNAME }} --password-stdin
-
-      # Build and push Docker image and Helm chart
-      - name: Build and push
-        run: make release
+      - name: Log Helm in to Zot
         env:
-          VERSION: v${{ needs.release-please.outputs.version }}
+          REGISTRY_USERNAME: ${{ secrets.HELM_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.HELM_PASSWORD }}
+        run: printf '%s' "${REGISTRY_PASSWORD}" | helm registry login "${REGISTRY}" --username "${REGISTRY_USERNAME}" --password-stdin
+
+      - name: Define release metadata
+        id: metadata
+        run: |
+          printf 'created=%s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "${GITHUB_OUTPUT}"
+          printf 'revision=%s\n' "$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+
+      - name: Build and push image
+        id: image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_REPOSITORY }}:v${{ env.VERSION }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_REPOSITORY }}:latest
+          labels: |
+            org.opencontainers.image.authors=Jonathan Seth Mainguy <jon@soh.re>
+            org.opencontainers.image.created=${{ steps.metadata.outputs.created }}
+            org.opencontainers.image.description=Kubernetes operator providing TCP proxying with per-connection pod isolation
+            org.opencontainers.image.licenses=GPL-2.0-only
+            org.opencontainers.image.revision=${{ steps.metadata.outputs.revision }}
+            org.opencontainers.image.source=https://github.com/Jmainguy/isolation-proxy
+            org.opencontainers.image.title=Isolation Proxy
+            org.opencontainers.image.url=https://github.com/Jmainguy/isolation-proxy
+            org.opencontainers.image.vendor=Jmainguy
+            org.opencontainers.image.version=v${{ env.VERSION }}
+
+      - name: Sign and verify image digest
+        uses: Jmainguy/notation-action@v1
+        with:
+          version: 1.3.2
+          artifact: ${{ env.REGISTRY }}/${{ env.IMAGE_REPOSITORY }}@${{ steps.image.outputs.digest }}
+          key-name: jon-soh-re
+          private-key: ${{ secrets.NOTATION_PRIVATE_KEY }}
+          certificate-chain: ${{ secrets.NOTATION_CERTIFICATE_CHAIN }}
+          ca-certificate: ${{ secrets.NOTATION_CA_CERTIFICATE }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Add release annotations to chart
+        run: |
+          cat >> "${CHART_PATH}/Chart.yaml" <<EOF
+            org.opencontainers.image.created: "${{ steps.metadata.outputs.created }}"
+            org.opencontainers.image.revision: "${{ steps.metadata.outputs.revision }}"
+            org.opencontainers.image.version: "${VERSION}"
+          EOF
+
+      - name: Package and push chart
+        id: chart
+        run: |
+          helm lint "${CHART_PATH}"
+          helm package "${CHART_PATH}" --destination "${RUNNER_TEMP}" --version "${VERSION}" --app-version "v${VERSION}"
+          push_output="$(helm push "${RUNNER_TEMP}/isolation-proxy-operator-${VERSION}.tgz" "oci://${REGISTRY}/${CHART_REPOSITORY}")"
+          printf '%s\n' "${push_output}"
+          digest="$(printf '%s\n' "${push_output}" | awk '/^Digest: / { print $2 }')"
+          test -n "${digest}"
+          printf 'digest=%s\n' "${digest}" >> "${GITHUB_OUTPUT}"
+
+      - name: Sign and verify chart digest
+        uses: Jmainguy/notation-action@v1
+        with:
+          version: 1.3.2
+          artifact: ${{ env.REGISTRY }}/${{ env.CHART_REPOSITORY }}/isolation-proxy-operator@${{ steps.chart.outputs.digest }}
+          key-name: jon-soh-re
+          private-key: ${{ secrets.NOTATION_PRIVATE_KEY }}
+          certificate-chain: ${{ secrets.NOTATION_CERTIFICATE_CHAIN }}
+          ca-certificate: ${{ secrets.NOTATION_CA_CERTIFICATE }}
+          username: ${{ secrets.HELM_USERNAME }}
+          password: ${{ secrets.HELM_PASSWORD }}
+
+      - name: Verify published chart
+        run: helm show chart "oci://${REGISTRY}/${CHART_REPOSITORY}/isolation-proxy-operator" --version "${VERSION}"
