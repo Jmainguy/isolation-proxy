@@ -22,6 +22,10 @@ import (
 const (
 	// ReaperInterval is how often to clean up old/unused pods
 	ReaperInterval = 10 * time.Second
+	// BackendDialTimeout keeps a stale terminating pod from hanging a refresh.
+	BackendDialTimeout = 2 * time.Second
+	// BackendConnectAttempts lets a connection move to another warm pod when needed.
+	BackendConnectAttempts = 3
 )
 
 // ProxyServer handles TCP connections and forwards them to pods
@@ -62,28 +66,35 @@ func (p *ProxyServer) HandleConnection(conn net.Conn) {
 
 	logger.Info("Incoming TCP connection")
 
-	// Get a dedicated pod for this connection
-	podInfo, err := p.getOrCreateDedicatedPod(p.ctx)
-	if err != nil {
-		logger.Error(err, "Failed to get or create dedicated pod")
-		return
+	var podInfo *PodInfo
+	var backendConn net.Conn
+	var err error
+
+	for attempt := 1; attempt <= BackendConnectAttempts; attempt++ {
+		podInfo, err = p.getOrCreateDedicatedPod(p.ctx)
+		if err != nil {
+			logger.Error(err, "Failed to get or create dedicated pod", "attempt", attempt)
+			continue
+		}
+
+		logger.Info("Assigned pod to connection", "pod", podInfo.Name, "service", podInfo.ServiceName)
+		backendAddr := net.JoinHostPort(podInfo.IP, fmt.Sprintf("%d", podInfo.Port))
+		logger.Info("Connecting to backend", "addr", backendAddr, "attempt", attempt)
+
+		backendConn, err = net.DialTimeout("tcp", backendAddr, BackendDialTimeout)
+		if err == nil {
+			break
+		}
+
+		logger.Error(err, "Failed to connect to backend pod", "pod", podInfo.Name, "attempt", attempt)
+		// The Kubernetes list can briefly retain a ready condition for a pod that
+		// is already terminating. Remove that backend and retry another warm pod.
+		p.deletePod(p.ctx, podInfo.Name, podInfo.ServiceName)
+		podInfo = nil
 	}
 
-	logger.Info("Assigned pod to connection", "pod", podInfo.Name, "service", podInfo.ServiceName)
-
-	// Connect to the backend pod
-	backendAddr := net.JoinHostPort(podInfo.IP, fmt.Sprintf("%d", podInfo.Port))
-	logger.Info("Connecting to backend", "addr", backendAddr)
-
-	backendConn, err := net.Dial("tcp", backendAddr)
-	if err != nil {
-		logger.Error(err, "Failed to connect to backend pod")
-		// Mark pod as not in use since connection failed
-		p.mu.Lock()
-		if pod, exists := p.podCache[podInfo.Name]; exists {
-			pod.InUse = false
-		}
-		p.mu.Unlock()
+	if backendConn == nil || podInfo == nil {
+		logger.Error(err, "Failed to connect to a backend pod after retries")
 		return
 	}
 	defer backendConn.Close()
@@ -150,12 +161,6 @@ func (p *ProxyServer) getOrCreateDedicatedPod(ctx context.Context) (*PodInfo, er
 	// Try to find an unused pod first
 	podInfo, err := p.findUnusedPod(ctx, targetService)
 	if err == nil && podInfo != nil {
-		// Mark this pod as used
-		p.mu.Lock()
-		p.podCache[podInfo.Name] = podInfo
-		podInfo.InUse = true
-		p.mu.Unlock()
-
 		// Create/update IsolationPod resource
 		if err := p.createOrUpdateIsolationPod(ctx, podInfo, true); err != nil {
 			logger.Error(err, "Failed to create IsolationPod")
@@ -182,11 +187,6 @@ func (p *ProxyServer) getOrCreateDedicatedPod(ctx context.Context) (*PodInfo, er
 		time.Sleep(500 * time.Millisecond)
 		podInfo, err = p.findUnusedPod(ctx, targetService)
 		if err == nil && podInfo != nil {
-			p.mu.Lock()
-			p.podCache[podInfo.Name] = podInfo
-			podInfo.InUse = true
-			p.mu.Unlock()
-
 			// Create/update IsolationPod resource
 			if err := p.createOrUpdateIsolationPod(ctx, podInfo, true); err != nil {
 				logger.Error(err, "Failed to create IsolationPod")
@@ -201,7 +201,7 @@ func (p *ProxyServer) getOrCreateDedicatedPod(ctx context.Context) (*PodInfo, er
 	return nil, fmt.Errorf("no ready pods available after scaling")
 }
 
-// findUnusedPod finds a ready pod that hasn't been assigned a connection yet
+// findUnusedPod atomically reserves a ready, non-terminating pod.
 func (p *ProxyServer) findUnusedPod(ctx context.Context, serviceName string) (*PodInfo, error) {
 	// Get the DedicatedService to find the port
 	wss := &sohv1alpha1.DedicatedService{}
@@ -229,11 +229,15 @@ func (p *ProxyServer) findUnusedPod(ctx context.Context, serviceName string) (*P
 		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
 
-	// Find a ready pod that isn't in use
-	p.mu.RLock()
-	defer p.mu.RUnlock()
+	// Reserve the pod while holding the write lock so simultaneous browser
+	// refreshes cannot receive the same backend.
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
 	for _, pod := range podList.Items {
+		if pod.DeletionTimestamp != nil || pod.Status.PodIP == "" {
+			continue
+		}
 		if pod.Status.Phase == corev1.PodRunning {
 			for _, condition := range pod.Status.Conditions {
 				if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionTrue {
@@ -248,15 +252,9 @@ func (p *ProxyServer) findUnusedPod(ctx context.Context, serviceName string) (*P
 						Port:        port,
 						LastUsed:    time.Now(),
 						ServiceName: serviceName,
-						InUse:       false,
+						InUse:       true,
 					}
-
-					// Create IsolationPod for this pod if it doesn't exist
-					// This ensures all pods have an IsolationPod resource, not just in-use ones
-					if err := p.createOrUpdateIsolationPod(ctx, podInfo, false); err != nil {
-						logger := log.FromContext(ctx)
-						logger.Error(err, "Failed to create IsolationPod for discovered pod", "pod", podInfo.Name)
-					}
+					p.podCache[pod.Name] = podInfo
 
 					return podInfo, nil
 				}
