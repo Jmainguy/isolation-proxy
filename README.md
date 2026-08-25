@@ -2,6 +2,8 @@
 
 A Kubernetes operator that provides TCP proxy functionality with warm pool management and per-connection pod isolation.
 
+**[Open a live isolated terminal at soh.re →](https://soh.re/)**
+
 ## Overview
 
 `isolation-proxy` is a Kubernetes operator that:
